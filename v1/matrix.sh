@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #global variables
-infile1=""
+infile1="tmp_infile_$$" #need temp for input 1 if matrix piped in
 infile2=""
 outfile=""
 
@@ -74,20 +74,33 @@ countDimensions(){
 
 #
 dims(){
-    countDimensions
+    #check if file size >0
+    if [ -s "$infile1" ]
+    then
+        countDimensions
+    else
+        echo "ERROR: empty matrix" >&2  ##sending to standard error
+        exit 1 ##error  
+    fi
+
+
+
     echo "$file1_rowCount $file1_colCount"
     return
 }
 
 transpose(){
     countDimensions
+    outfile="tmp_outfile_$$" 
 
-    for (( i=1; i<"$file1_colCount";i=i+1))
+    for (( i=1; i<="$file1_colCount";i=i+1))
     do
-        #takes single column from input, tranposes and sends to output
-        cut -f $i $infile1 | tr '\n' '\t' >> $outfile    
-        echo -e "" >> $outfile          #echo empty string adds end of line
+        #takes single column from input, tranposes
+        tmp_row="$(cut -f $i $infile1 | tr '\n' '\t')"
+        echo "${tmp_row%?}" >> $outfile
     done
+
+    cat $outfile
     return
 }
 
@@ -97,14 +110,15 @@ mean(){
     tempTransposed="tmp_avg1_$$"
     tempResults="tmp_avg2_$$"
 
-    #step 1: transpose matrix, so can average rows
+    #step 1: transpose matrix, so can work with rows instead of columns
+
     for (( i=1; i<="$file1_colCount";i=i+1))
     do
-        #takes single column from input, tranposes and sends to output
-        cut -f $i $infile | tr '\n' '\t' >> $tempTransposed   
-        echo -e "" >> $tempTransposed          #echo empty string adds end of line
-    done	
-
+        #takes single column from input, tranposes
+        tmp_row="$(cut -f $i $infile1 | tr '\n' '\t')"
+        echo "${tmp_row%?}" >> $tempTransposed 
+    done
+	
     #step 2: loop over rows, calculate average of each row
     while read row
     do
@@ -114,13 +128,14 @@ mean(){
             sum=$(( $sum + $i ))
         done
         # average = sum / (input rowsize)
-        echo -e "row: $row"
-        echo -e "sum: $sum"
+        #echo -e "row: $row"
+        #echo -e "sum: $sum"
         expr $(( (( $sum + (( $file1_rowCount / 2)) * (( ($sum>0) * 2 - 1)) )) / $file1_rowCount )) >> $tempResults
     done < $tempTransposed
 
-    #print results
-    cat $tempResults
+    #print results, currently in temp file as single column so need to transpose before writing
+    result_row="$(cut -f 1 $tempResults | tr '\n' '\t')"
+    echo "${result_row%?}" 
 
     #cleanup
     rm $tempTransposed $tempResults
@@ -147,17 +162,41 @@ return
 #echo "parameter 0:$0"
 #echo "parameter 1:$1"
 
-if [[ $# -eq 2 && ( $1 -eq "dims" ||  $1 -eq "transpose" ) ]]
+
+if [[ ($1 -eq "dims" ||  $1 -eq "transpose" || $1 -eq "mean") ]]
 then
-    infile1=$2 
     #echo "case number 1 -- one parameter functions"
+
+    if [ "$#" = "1" ]
+    then
+        cat > "$infile1"
+    elif [ "$#" = "2" ]
+    then
+        infile1=$2
+    fi
+
+    #check that there is a file name 
+    if [ "$infile1" = "" ]
+    then
+        echo "No input file received" >&2  ##sending to standard error
+        exit 1 ##error        
+    fi
+
+    #two parameters for dim/transpose/mean cause error
+    if [ "$#" = "3" ]
+    then
+        echo "Too many parameters" >&2  ##sending to standard error
+        exit 1 ##error        
+    fi
+
+    #run function
     $1
-elif [[ $# -eq 3 && ( $1 -eq "mean" || $1 -eq "add" || $1 -eq "multiply" ) ]] 
+elif [[ $# -eq 3 && (  $1 -eq "add" || $1 -eq "multiply" ) ]] 
 then
     infile1=$2
     infile2=$3
     echo "case number 2 -- two parameter functions"
 else
-    echo "Incorrect parameter combination"
+    echo "Incorrect parameter combination" >&2  ##sending to standard error
 	exit 1 ##error
 fi
