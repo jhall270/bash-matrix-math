@@ -38,13 +38,23 @@ countDimensionsM1(){
             if [ "$count" -ne "$file1_colCount" ]
             then
                 echo "ERROR -- matrix not complete"
-		exit 1
+		        exit 1
             fi
         fi
         
         ((file1_rowCount++))
 
     done < $infile1
+
+    #if file is unreadable, rowcount will still be zero
+    if [ "$file1_rowCount" -eq 0 ]
+    then
+        echo "Did not read any rows from file 1" >&2  ##sending to standard error
+        rm -f tmp_*
+        exit 1 #error    
+    fi
+
+    return
 }
 
 #function to calculate dimensions of matrix 2
@@ -319,7 +329,7 @@ then
     #run function
     $1
 
-elif [[ ($1 = "add" || $1 = "multiply" ) ]] 
+elif [[ ($1 = "add" || $1 = "multiply" ) && "$#" = "3" ]] 
 then
     #two parameter functions
     infile1=$2
@@ -329,6 +339,7 @@ then
     $1
 else
     echo "Incorrect parameter combination" >&2  ##sending to standard error
+    rm -f tmp_*
 	exit 1 ##error
 fi
 
